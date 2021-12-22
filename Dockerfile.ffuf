@@ -1,0 +1,8 @@
+FROM golang:1.17-alpine AS build
+RUN GO111MODULE=on go install -v github.com/ffuf/ffuf@latest
+
+FROM alpine:3.14
+RUN apk --no-cache add bind-tools ca-certificates
+COPY --from=build /go/bin/ffuf /bin/ffuf
+
+ENTRYPOINT ["ffuf"]
