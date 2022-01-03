@@ -5,6 +5,20 @@ import docker
 client = docker.from_env()
 
 
+def check_image_exist(image_tag):
+    try:
+        updated_tag = image_tag + ":latest"
+        image_list = client.images.list()
+        if len(image_list) != 0:
+            for image in image_list:
+                exist_tag = image.tags[0]
+                if updated_tag == exist_tag:
+                    return True
+        return False
+    except Exception as err:
+        raise err
+
+
 def build_image(dockerfile_path, dockerfile_name, image_tag):
     try:
         print("build executed")
@@ -17,7 +31,7 @@ def build_image(dockerfile_path, dockerfile_name, image_tag):
 
 def force_installation_dockers(image_tag_list):
     for image_dict in image_tag_list:
-        if image_dict["image_tag"]:
+        if check_image_exist(image_dict["image_tag"]) is False:
             print(image_dict["image_tag"])
             while True:
                 if build_image(image_dict["path"], image_dict["dockerfile"], image_dict["image_tag"]):
@@ -31,21 +45,24 @@ def force_installation_dockers(image_tag_list):
             return True
     return True
 
+
 # ffuf -u https://FUZZ.rootdomain -w jhaddixall.txt -v | grep "| URL |" | awk '{print $4}'
 
-def ffuf_subdomain_exec(local_client, domain, image_tag):
-    temp = domain.split("//")
-    domain_url = temp[0] + "//" + "FUZZ" + temp[1]
+def ffuf_exec(local_client, maurl, image_tag):
+    domain_url = maurl + "/FUZZ"
+    print(domain_url)
     try:
         resp = local_client.containers.run(image_tag,
-                                           ["-u",
+                                           ["-w", "/dev/shm/wordlist.txt",
+                                            "-c",
+                                            "-u",
                                             domain_url,
-                                            "-w", "/dev/shm/all.txt",
-                                            "-o", "/dev/shm/out_ffuf.txt"],
+                                            "-o", "/dev/shm/ffuf_" + maurl.split("//")[1].split("/")[0] + "_out.txt",
+                                            "-of", "json",
+                                            "-sa"],
                                            volumes={
-                                               '/tmp/ffuf/wordlist_files': {
+                                               '/tmp/ffuf_scan/wordlist_files': {
                                                    'bind': '/dev/shm', 'mode': 'rw'}},
-                                           name=image_tag + "_isoo",
                                            auto_remove=True)
         print(resp)
         return resp
@@ -55,16 +72,19 @@ def ffuf_subdomain_exec(local_client, domain, image_tag):
 
 if __name__ == '__main__':
     def main():
+
         image_tag_list = [{'path': '.',
                            "dockerfile": "Dockerfile.ffuf",
                            'image_tag': 'ffuf'}
                           ]
-        with open("domain_to_scan.txt", "r") as f:
-            domain_name = f.read()
+
+        with open("url_to_scan.txt", "r") as f:
+            url_list = f.readlines()
 
         if force_installation_dockers(image_tag_list):
-            print("sleeped")
-            sleep(3)
+            for my_url in url_list:
+                ffuf_exec(client, my_url.strip(), "ffuf")
+                sleep(1)
 
-            ffuf_subdomain_exec(client, domain_name, "ffuf")
+
     main()
